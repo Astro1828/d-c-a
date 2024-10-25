@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat App with User List, DMs, and Media Sharing</title>
+    <style>
+        body { font-family: Arial, sans-serif; display: flex; flex-direction: column; align-items: center; }
+        #chat-container { width: 80%; max-width: 600px; margin-top: 20px; display: flex; flex-direction: column; }
+        #user-list { list-style-type: none; padding: 0; border-right: 1px solid #ddd; padding-right: 10px; }
+        #messages { list-style-type: none; padding: 0; flex: 1; }
+        #messages li { padding: 5px 10px; border-bottom: 1px solid #ddd; }
+        #form, #username-form { display: flex; }
+        #input, #username-input, #room-select { flex: 1; padding: 10px; }
+        #emoji-container { margin-top: 10px; }
+        .emoji-btn { cursor: pointer; padding: 5px; font-size: 1.5em; }
+        .timestamp { font-size: 0.8em; color: gray; }
+        #typing { font-style: italic; color: gray; }
+    </style>
+</head>
+<body>
+    <div id="chat-container">
+        <div style="display: flex;">
+            <ul id="user-list"> <!-- List of users in the room --> </ul>
+            <ul id="messages"></ul>
+        </div>
+        <div id="typing"></div>
+
+        <!-- Username and Room selection form -->
+        <form id="username-form">
+            <input id="username-input" autocomplete="off" placeholder="Enter your name" required />
+            <select id="room-select">
+                <option value="general">General</option>
+                <option value="sports">Sports</option>
+                <option value="music">Music</option>
+                <option value="movies">Movies</option>
+            </select>
+            <button>Join</button>
+        </form>
+
+        <!-- Chat form (hidden initially, shown after username is set) -->
+        <form id="form" action="" style="display: none;">
+            <input id="input" autocomplete="off" placeholder="Type a message" />
+            <button>Send</button>
+        </form>
+
+        <!-- Emoji buttons -->
+        <div id="emoji-container">
+            <span class="emoji-btn">😊</span>
+            <span class="emoji-btn">😂</span>
+            <span class="emoji-btn">👍</span>
+            <span class="emoji-btn">❤️</span>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+
+        const form = document.getElementById('form');
+        const input = document.getElementById('input');
+        const messages = document.getElementById('messages');
+        const typingDiv = document.getElementById('typing');
+        const usernameForm = document.getElementById('username-form');
+        const usernameInput = document.getElementById('username-input');
+        const roomSelect = document.getElementById('room-select');
+        const userList = document.getElementById('user-list');
+        const emojiButtons = document.querySelectorAll('.emoji-btn');
+        
+        let username = '';
+        let room = 'general';
+
+        // Handle setting username and joining room
+        usernameForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            if (usernameInput.value.trim()) {
+                username = usernameInput.value.trim();
+                room = roomSelect.value;
+                socket.emit('join room', { room, username });
+                usernameForm.style.display = 'none';
+                form.style.display = 'flex';
+            }
+        });
+
+        // Send message on form submit
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            if (input.value) {
+                socket.emit('chat message', input.value);
+                input.value = '';
+            }
+        });
+
+        // Add emoji to input
+        emojiButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                input.value += btn.textContent;
+                input.focus();
+            });
+        });
+
+        // Display messages
+        socket.on('chat message', ({ msg, user, time }) => {
+            const item = document.createElement('li');
+            item.innerHTML = `<strong>${user}</strong> <span class="timestamp">[${time}]</span>: ${msg}`;
+            messages.appendChild(item);
+            window.scrollTo(0, document.body.scrollHeight);
+        });
+
+        // Display message history for the selected room
+        socket.on('message history', (history) => {
+            messages.innerHTML = '';
+            history.forEach(({ msg, user, time }) => {
+                const item = document.createElement('li');
+                item.innerHTML = `<strong>${user}</strong> <span class="timestamp">[${time}]</span>: ${msg}`;
+                messages.appendChild(item);
+            });
+        });
+
+        // Display when a user joins or leaves
+        socket.on('user joined', (message) => {
+            const item = document.createElement('li');
+            item.style.fontStyle = 'italic';
+            item.textContent = message;
+            messages.appendChild(item);
+        });
+
+        socket.on('user left', (message) => {
+            const item = document.createElement('li');
+            item.style.fontStyle = 'italic';
+            item.textContent = message;
+            messages.appendChild(item);
+        });
+
+        // Update user list
+        socket.on('user list', (users) => {
+            userList.innerHTML = ''; // Clear previous list
+            users.forEach(user => {
+                const userItem = document.createElement('li');
+                userItem.textContent = user;
+                userList.appendChild(userItem);
+            });
+        });
+
+        // Show typing indicator
+        input.addEventListener('input', () => {
+            socket.emit('typing', input.value.length > 0);
+        });
+
+        socket.on('typing', ({ user, isTyping }) => {
+            typingDiv.textContent = isTyping ? `${user} is typing...` : '';
+        });
+    </script>
+</body>
+</html>
